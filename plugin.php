@@ -225,7 +225,7 @@ class WebFingerPlugin {
   }
   
   /**
-   * returns a Userobject
+   * returns a Postobject
    *
    * @param string $uri
    * @return WP_Post
