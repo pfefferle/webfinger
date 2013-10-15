@@ -26,7 +26,7 @@ class WebFingerPlugin {
     $vars[] = 'well-known';
     $vars[] = 'resource';
     $vars[] = 'rel';
-
+    
     return $vars;
   }
 
@@ -66,19 +66,31 @@ class WebFingerPlugin {
       exit;
     }
 
+    do_action('webfinger_pre_render', $wp->query_vars['resource']);
+    
+    $webfinger = array();
+    
     // find matching user
-    $user = self::get_user_by_uri($wp->query_vars['resource']);
-
+    if ($user = self::get_user_by_uri($wp->query_vars['resource'])) {
+      // user specific filter
+      $webfinger = apply_filters('webfinger_user_output', $webfinger, $user, $wp->query_vars['resource']);
+    // or post
+    } else if ($post = self::get_post_by_uri($wp->query_vars['resource'])) {
+      // post specific filter
+      $webfinger = apply_filters('webfinger_post_output', $webfinger, $post, $wp->query_vars['resource']);
+    }
+    
+    // generic filter independent of any WordPress filter
+    $webfinger = apply_filters('webfinger_generic_output', $webfinger, $wp->query_vars['resource']);
+    
     // check if "user" exists
-    if (!$user) {
+    if (empty($webfinger)) {
       status_header(404);
       header('Content-Type: text/plain; charset=' . get_bloginfo('charset'), true);
-      echo 'no user found';
+      echo 'no matching "resource" found';
       exit;
     }
 
-    // filter webfinger array
-    $webfinger = apply_filters('webfinger', array(), $user, $wp->query_vars['resource'], $wp->query_vars);
     do_action('webfinger_render', $webfinger);
   }
 
@@ -103,7 +115,7 @@ class WebFingerPlugin {
    * @param string $resource the resource param
    * @return array the enriched webfinger data-array
    */
-  public function generate_default_content($webfinger, $user, $resource) {
+  public function generate_default_user_content($webfinger, $user, $resource) {
     // generate "profile" url
     $url = get_author_posts_url($user->ID, $user->user_nicename);
     // generate default photo-url
@@ -112,7 +124,7 @@ class WebFingerPlugin {
 
     // generate default array
     $webfinger = array('subject' => $resource,
-                       'aliases' => self::get_resources($user->ID),
+                       'aliases' => self::get_user_resources($user->ID),
                        'links' => array(
                          array('rel' => 'http://webfinger.net/rel/profile-page', 'type' => 'text/html', 'href' => $url),
                          array('rel' => 'http://webfinger.net/rel/avatar',  'href' => $photo)
@@ -125,6 +137,25 @@ class WebFingerPlugin {
 
     return $webfinger;
   }
+  
+  /**
+   * generates the webfinger base array
+   *
+   * @param array $webfinger the webfinger data-array
+   * @param stdClass $user the WordPress user
+   * @param string $resource the resource param
+   * @return array the enriched webfinger data-array
+   */
+  public function generate_default_post_content($webfinger, $post, $resource) {
+    $webfinger = array('subject' => get_permalink($post->ID),
+                       'aliases' => array(home_url('?p=' . $post->ID), get_permalink($post->ID)),
+                       'links' => array(
+                         array('rel' => 'shortlink', 'type' => 'text/html', 'href' => wp_get_shortlink($post)),
+                         array('rel' => 'canonical', 'type' => 'text/html', 'href' => get_permalink($post->ID))
+                       ));
+    
+    return $webfinger;
+  }
 
   /**
    * filters the webfinger array by request params like "rel"
@@ -135,22 +166,22 @@ class WebFingerPlugin {
    * @param array $queries
    * @return array
    */
-  public function filter_by_rel($webfinger, $user, $resource, $queries) {
+  public function filter_by_rel($webfinger, $resource) {
     // check if "rel" is set
-    if (!array_key_exists('rel', $queries)) {
+    if (!array_key_exists('rel', $_GET)) {
       return $webfinger;
     }
 
     // filter webfinger-array
     $links = array();
     foreach ($webfinger['links'] as $link) {
-      if ($link["rel"] == $queries["rel"]) {
+      if ($link["rel"] == $_GET['rel']) {
         $links[] = $link;
       }
     }
     $webfinger['links'] = $links;
 
-    // return only "links" with the matching
+    // return only "links" with the matching rel
     return $webfinger;
   }
 
@@ -158,7 +189,7 @@ class WebFingerPlugin {
    * returns a Userobject
    *
    * @param string $uri
-   * @return stdClass
+   * @return WP_User
    */
   private function get_user_by_uri($uri) {
     global $wpdb;
@@ -168,7 +199,7 @@ class WebFingerPlugin {
     if (preg_match("~^https?://~i", $uri)) {
       // check if url matches with a
       // users profile url
-      foreach (get_users_of_blog() as $user) {
+      foreach (get_users() as $user) {
         if (rtrim(str_replace("www.", "", get_author_posts_url($user->ID, $user->user_nicename)), "/") ==
             rtrim(str_replace("www.", "", $uri), "/")) {
           return $user;
@@ -192,6 +223,18 @@ class WebFingerPlugin {
 
     return false;
   }
+  
+  /**
+   * returns a Userobject
+   *
+   * @param string $uri
+   * @return WP_Post
+   */
+  private function get_post_by_uri($uri) {
+    $post_id = url_to_postid($uri);
+    
+    return get_post($post_id);
+  }
 
   /**
    * returns a users default webfinger
@@ -200,7 +243,7 @@ class WebFingerPlugin {
    * @param boolean $protocol
    * @return string
    */
-  function get_resource($id_or_name_or_object, $protocol = false) {
+  function get_user_resource($id_or_name_or_object, $protocol = false) {
     $user = self::get_user_by_various($id_or_name_or_object);
 
     if ($user) {
@@ -220,11 +263,11 @@ class WebFingerPlugin {
    * @param mixed $id_or_name_or_object
    * @return array
    */
-  public function get_resources($id_or_name_or_object) {
+  public function get_user_resources($id_or_name_or_object) {
     $user = self::get_user_by_various($id_or_name_or_object);
 
     if ($user) {
-      $resources[] = self::get_resource($user, true);
+      $resources[] = self::get_user_resource($user, true);
       $resources[] = get_author_posts_url($user->ID, $user->user_nicename);
       if ($user->user_email && self::check_mail_domain($user->user_email)) {
         $resources[] = "mailto:".$user->user_email;
@@ -232,7 +275,7 @@ class WebFingerPlugin {
       if (get_user_meta($user->ID, "jabber", true) && self::check_mail_domain(get_user_meta($user->ID, "jabber", true))) {
         $resources[] = "xmpp:".get_user_meta($user->ID, "jabber", true);
       }
-      $resources = apply_filters('webfinger_resources', $resources);
+      $resources = apply_filters('webfinger_user_resources', $resources);
 
       return array_unique($resources);
     } else {
@@ -277,15 +320,31 @@ class WebFingerPlugin {
 
     return false;
   }
-
+  
+  /**
+   * backwards compatibility for old versions. please don't use!
+   *
+   * @deprecated
+   *
+   * @param array $webfinger
+   * @param WP_User $user
+   * @param string $resource
+   * @return array
+   */
+  public function old_filter($webfinger, $user, $resource) {
+    // filter webfinger array
+    return apply_filters('webfinger', $webfinger, $user, $resource, $_GET);
+  }
 }
 
-add_action('query_vars', array('WebFingerPlugin', 'query_vars'));
+add_filter('query_vars', array('WebFingerPlugin', 'query_vars'));
 add_action('parse_request', array('WebFingerPlugin', 'parse_request'));
 add_action('generate_rewrite_rules', array('WebFingerPlugin', 'rewrite_rules'));
 
-add_filter('webfinger', array('WebFingerPlugin', 'generate_default_content'), 0, 3);
-add_filter('webfinger', array('WebFingerPlugin', 'filter_by_rel'), 99, 4);
+add_filter('webfinger_user_output', array('WebFingerPlugin', 'generate_default_user_content'), 0, 3);
+add_filter('webfinger_user_output', array('WebFingerPlugin', 'old_filter'), 0, 3);
+add_filter('webfinger_post_output', array('WebFingerPlugin', 'generate_default_post_content'), 0, 3);
+add_filter('webfinger_generic_output', array('WebFingerPlugin', 'filter_by_rel'), 99, 2);
 
 add_action('webfinger_render', array('WebFingerPlugin', 'render_jrd'), 20, 1);
 
