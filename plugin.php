@@ -26,7 +26,7 @@ class WebFingerPlugin {
     $vars[] = 'well-known';
     $vars[] = 'resource';
     $vars[] = 'rel';
-    
+
     return $vars;
   }
 
@@ -67,9 +67,9 @@ class WebFingerPlugin {
     }
 
     do_action('webfinger_pre_render', $wp->query_vars['resource']);
-    
+
     $webfinger = array();
-    
+
     // find matching user
     if ($user = self::get_user_by_uri($wp->query_vars['resource'])) {
       // user specific filter
@@ -79,7 +79,7 @@ class WebFingerPlugin {
       // post specific filter
       $webfinger = apply_filters('webfinger_post_output', $webfinger, $post, $wp->query_vars['resource']);
     }
-    
+
     // generic filter independent of any WordPress filter
     $webfinger = apply_filters('webfinger_generic_output', $webfinger, $wp->query_vars['resource']);
     
@@ -153,7 +153,7 @@ class WebFingerPlugin {
                          array('rel' => 'shortlink', 'type' => 'text/html', 'href' => wp_get_shortlink($post)),
                          array('rel' => 'canonical', 'type' => 'text/html', 'href' => get_permalink($post->ID))
                        ));
-    
+
     return $webfinger;
   }
 
@@ -223,7 +223,7 @@ class WebFingerPlugin {
 
     return false;
   }
-  
+
   /**
    * returns a Postobject
    *
@@ -320,7 +320,7 @@ class WebFingerPlugin {
 
     return false;
   }
-  
+
   /**
    * backwards compatibility for old versions. please don't use!
    *
