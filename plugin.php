@@ -82,7 +82,7 @@ class WebFingerPlugin {
 
     // generic filter independent of any WordPress filter
     $webfinger = apply_filters('webfinger_generic_output', $webfinger, $wp->query_vars['resource']);
-    
+
     // check if "user" exists
     if (empty($webfinger)) {
       status_header(404);
@@ -137,7 +137,7 @@ class WebFingerPlugin {
 
     return $webfinger;
   }
-  
+
   /**
    * generates the webfinger base array
    *
@@ -232,7 +232,7 @@ class WebFingerPlugin {
    */
   private function get_post_by_uri($uri) {
     $post_id = url_to_postid($uri);
-    
+
     return get_post($post_id);
   }
 
