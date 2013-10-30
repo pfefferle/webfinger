@@ -69,16 +69,17 @@ class WebFingerPlugin {
     // find matching user
     $user = self::get_user_by_uri($wp->query_vars['resource']);
 
+    // filter webfinger array
+    $webfinger = apply_filters('webfinger_data', array(), $user, $wp->query_vars['resource']);
+
     // check if "user" exists
-    if (!$user) {
+    if (empty($webfinger)) {
       status_header(404);
       header('Content-Type: text/plain; charset=' . get_bloginfo('charset'), true);
-      echo 'no user found';
+      echo 'no data found for resource "'.$wp->query_vars['resource'].'"';
       exit;
     }
 
-    // filter webfinger array
-    $webfinger = apply_filters('webfinger', array(), $user, $wp->query_vars['resource'], $wp->query_vars);
     do_action('webfinger_render', $webfinger);
   }
 
@@ -104,6 +105,11 @@ class WebFingerPlugin {
    * @return array the enriched webfinger data-array
    */
   public function generate_user_data($webfinger, $user, $resource) {
+    // check if it is a user resource
+    if (!$user) {
+      return $webfinger;
+    }
+
     // generate "profile" url
     $url = get_author_posts_url($user->ID, $user->user_nicename);
     // generate default photo-url
@@ -357,6 +363,24 @@ class WebFingerPlugin {
     return false;
   }
 
+  /**
+   * backwards compatibility for old versions. please don't use!
+   *
+   * @deprecated
+   *
+   * @param array $webfinger
+   * @param WP_User $user
+   * @param string $resource
+   * @return array
+   */
+  public function legacy_filter($webfinger, $user, $resource) {
+    if ($user) {
+      // filter webfinger array
+      return apply_filters('webfinger', $webfinger, $user, $resource, $_GET);
+    } else {
+      return $webfinger;
+    }
+  }
 }
 
 if (!function_exists('url_to_authorid')) {
@@ -409,8 +433,11 @@ add_action('query_vars', array('WebFingerPlugin', 'query_vars'));
 add_action('parse_request', array('WebFingerPlugin', 'parse_request'));
 add_action('generate_rewrite_rules', array('WebFingerPlugin', 'rewrite_rules'));
 
-add_filter('webfinger', array('WebFingerPlugin', 'generate_user_data'), 0, 3);
-add_filter('webfinger', array('WebFingerPlugin', 'filter_by_rel'), 99, 1);
+add_filter('webfinger_data', array('WebFingerPlugin', 'generate_user_data'), 0, 3);
+add_filter('webfinger_data', array('WebFingerPlugin', 'filter_by_rel'), 99, 1);
+
+// support plugins pre 3.0.0
+add_filter('webfinger_data', array('WebFingerPlugin', 'legacy_filter'), 0, 3);
 
 add_action('webfinger_render', array('WebFingerPlugin', 'render_jrd'), 20, 1);
 
